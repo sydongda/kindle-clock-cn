@@ -3,6 +3,8 @@ Fork 自 [mattzzw/kindle-clock](git@github.com:mattzzw/kindle-clock.git)。
 
 在此基础上，仅对中文支持做了必要的修改，减少了整点时由于打开wifi导致的时间更新延迟大的问题。该项目仅测试了Kindle WhitePaper2。
 
+![screenshot](./screenshotcn.jpg)
+
 # Kindle Clock
 
 This turns a Kindle Paperwhite into a pretty clock with a little bit of weather info.
