@@ -1,33 +1,21 @@
 #!/bin/sh
 
 PWD=$(pwd)
-#LOG="/mnt/us/clock.log"
 LOG="/dev/null"
-FBINK="/mnt/us/extensions/MRInstaller/bin/K5/fbink -q"
+FBINK="/mnt/us/extensions/MRInstaller/bin/PW2/fbink -q"
 FONT="regular=/usr/java/lib/fonts/Palatino-Regular.ttf"
-#FONT="regular=/usr/java/lib/fonts/Caecilia_LT_75_Bold.ttf"
-CITY="Hamburg"
+CNFONT="regular=/usr/java/lib/fonts/STSongMedium.ttf"
+CITY="ShangHai"
 COND="---"
 TEMP="---"
-
-### uncomment/adjust according to your hardware
-#K4NT
-#FBROTATE=" echo 14 2 > /proc/eink_fb/update_display"
-#BACKLIGHT="/dev/null"
-#BATTERY="/sys/devices/system/yoshi_battery/yoshi_battery0/battery_capacity"
-#TEMP_SENSOR="/sys/devices/virtual/i2c-adapter/i2c-1/1-0048/papyrus_temperature"
-
-#PW3
-#FBROTATE="echo 0 > /sys/devices/platform/imx_epdc_fb/graphics/fb0/rotate"
-#BACKLIGHT="/sys/devices/platform/imx-i2c.0/i2c-0/0-003c/max77696-bl.0/backlight/max77696-bl/brightness"
-#BATTERY="/sys/devices/system/wario_battery/wario_battery0/battery_capacity"
-#TEMP_SENSOR="/sys/devices/virtual/i2c-adapter/i2c-1/1-0068/papyrus_temperature"
+NTP_HOST="ntp1.aliyun.com"
 
 #PW2
-FBROTATE="echo -n 0 > /sys/devices/platform/mxc_epdc_fb/graphics/fb0/rotate"
-BACKLIGHT="/sys/devices/system/fl_tps6116x/fl_tps6116x0/fl_intensity"
-BATTERY="/sys/devices/system/yoshi_battery/yoshi_battery0/battery_capacity"
-TEMP_SENSOR="/sys/devices/virtual/i2c-adapter/i2c-1/1-0068/papyrus_temperature"
+FBROTATE="echo -n 0 > /sys/devices/platform/imx_epdc_fb/graphics/fb0/rotate"
+
+update_time() {
+    ntpdate -s "${NTP_HOST}"
+}
 
 wait_for_wifi() {
   return `lipc-get-prop com.lab126.wifid cmState | grep -e "CONNECTED" | wc -l`
@@ -36,15 +24,18 @@ wait_for_wifi() {
 
 ### Updates weather info
 update_weather() {
-    WEATHER=$(curl -s -f -m 5 https://de.wttr.in/$CITY?format="%C,+%t" )
-#     WEATHER=$(curl -v -s -f -m 5 https://de.wttr.in/$CITY?format="%C,+%t" 2>> $LOG)
+    WEATHER=$(curl -s -f -m 5 'https://zh.wttr.in/'$CITY'?format=%C' 2>> $LOG)
     RC=$?
-    echo "`date '+%Y-%m-%d_%H:%M:%S'`: Got weather data. ($WEATHER, RC=$RC)" >> $LOG
     if [ ! -z "$WEATHER" ]; then
-        COND=${WEATHER%,*}
-        TEMP=$(echo ${WEATHER##*,} | sed s/+//)
-        echo "`date '+%Y-%m-%d_%H:%M:%S'`: Processed weather data. ($TEMP // $COND)" >> $LOG
+        COND=${WEATHER}
     fi
+    ### 英文的温度更准确，中文的温度感觉会滞后。
+    WEATHER=$(curl -s -f -m 5 'https://wttr.in/'$CITY'?format=+%t' 2>> $LOG)
+    RC=$?
+    if [ ! -z "$WEATHER" ]; then
+        TEMP=$(echo ${WEATHER} | sed s/+//)
+    fi
+    echo "`date '+%Y-%m-%d_%H:%M:%S'`: Processed weather data. ($TEMP // $COND)" >> $LOG
 }
 
 clear_screen(){
@@ -62,19 +53,6 @@ fi
 
 $FBINK -w -c -f -m -t $FONT,size=20,top=410,bottom=0,left=0,right=0 "Starting Clock..." > /dev/null 2>&1
 
-
-### stop processes that we don't need
-#K4
-#/etc/init.d/framework stop
-#/etc/init.d/pmond stop
-#/etc/init.d/phd stop
-#/etc/init.d/cmd stop
-#/etc/initd./tmd stop
-#/etc/init.d/browserd stop
-#/etc/init.d/webreaderd stop
-#/etc/init.d/lipc-daemon stop
-#/etc/init.d/powerd stop
-
 #PW2/3
 stop lab126_gui
 stop otaupd
@@ -82,7 +60,7 @@ stop phd
 stop tmd
 stop x
 stop todo
-stop mcsd
+# stop mcsd ###stop: Unknown instance:
 
 sleep 2
 
@@ -95,25 +73,58 @@ echo powersave > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 lipc-set-prop com.lab126.powerd preventScreenSaver 1
 
 ### set time/weather as we start up
-ntpdate -s de.pool.ntp.org
+update_time
 update_weather
+
+### 星期显示中文
+DATE=$(/mnt/us/python3/bin/python3.9 cnday.py)
 clear_screen
+
+update_display() {
+    BAT=$(gasgauge-info -s)
+    TIME=$(date '+%H:%M')
+
+    # Adjust coordinates according to display resolution. This is for PW2.
+    $FBINK -b -c -m -t $FONT,size=150,top=10,bottom=0,left=0,right=0 "$TIME"
+    $FBINK -b -m -t $CNFONT,size=30,top=410,bottom=0,left=0,right=0 "$DATE"
+    $FBINK -b    -t $FONT,size=10,top=0,bottom=0,left=850,right=0 "BATTERY: $BAT"
+    $FBINK -b -m -t $CNFONT,size=20,top=510,bottom=0,left=0,right=0 "$COND"
+    $FBINK -b -m -t $FONT,size=30,top=600,bottom=0,left=0,right=0 "$TEMP"
+    if [ "$NOWIFI" = "1" ]; then
+        $FBINK -b -t $FONT,size=10,top=0,bottom=0,left=50,right=0 "No Wifi!"
+    fi
+    # Update framebuffer
+    $FBINK -w -s
+
+    echo "$(date '+%Y-%m-%d_%H:%M:%S'): Battery: $BAT" >> $LOG
+}
 
 while true; do
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Top of loop (awake!)." >> $LOG
     ### Backlight off
-    echo -n 0 > $BACKLIGHT
+    ### 没找到，手动设置亮度为最低。
 
     ### Get weather data and set time via ntpdate every hour
     MINUTE=`date "+%M"`
+    HOUR=`date "+%H"`
+    if [ "$HOUR" = "00" ] && [ "$MINUTE" = "00" ]; then
+        DATE=$(/mnt/us/python3/bin/python3.9 cnday.py)
+    fi
+
     if [ "$MINUTE" = "00" ]; then
+        #为了避免整点的时候，延迟太多，在打开wifi之前，先更新时间信息
+        update_display
+
         echo "`date '+%Y-%m-%d_%H:%M:%S'`: Enabling Wifi" >> $LOG
         ### Enable WIFI, disable wifi first in order to have a defined state
     	lipc-set-prop com.lab126.cmd wirelessEnable 1
         TRYCNT=0
         NOWIFI=0
         ### Wait for wifi to come up
-    	while wait_for_wifi; do
+        while true; do
+            if wait_for_wifi; then
+                break
+            fi
             if [ ${TRYCNT} -gt 30 ]; then
                 ### waited long enough
                 echo "`date '+%Y-%m-%d_%H:%M:%S'`: No Wifi... ($TRYCNT)" >> $LOG
@@ -131,18 +142,19 @@ while true; do
                 ### Could also be that kindle forgot the wpa ssid/psk combo
                 #if [ wpa_cli status | grep INACTIVE | wc -l ]; then...
             fi
-    	    sleep 1
-            let TRYCNT=$TRYCNT+1
-    	done
+            sleep 1
+            TRYCNT=$((TRYCNT + 1))
+        done
         echo "`date '+%Y-%m-%d_%H:%M:%S'`: wifi: `lipc-get-prop com.lab126.wifid cmState`" >> $LOG
         echo "`date '+%Y-%m-%d_%H:%M:%S'`: wifi: `wpa_cli status`" >> $LOG
 
         if [ `lipc-get-prop com.lab126.wifid cmState` = "CONNECTED" ]; then
             ### Finally, set time
             echo "`date '+%Y-%m-%d_%H:%M:%S'`: Setting time..." >> $LOG
-            ntpdate -s de.pool.ntp.org
-            RC=$?
-            echo "`date '+%Y-%m-%d_%H:%M:%S'`: Time set. ($RC)" >> $LOG
+            ### 仅在零点更新
+            if [ "$HOUR" = "00" ]; then
+                update_time
+            fi
             update_weather
         fi
 
@@ -151,28 +163,8 @@ while true; do
 
     ### Disable WIFI
     lipc-set-prop com.lab126.cmd wirelessEnable 0
-
-    #BAT=$(gasgauge-info -s)
-    BAT=$(cat $BATTERY)
-    TIME=$(date '+%H:%M')
-    DATE=$(date '+%A, %-d. %B %Y')
-    INSIDE_TEMP_C=$(cat $TEMP_SENSOR)
-    # convert to centigrade
-    #let INSIDE_TEMP_C="($INSIDE_TEMP_F-32)*5/9"
-
-    ## adjust coordinates according to display resolution. This is for PW2.
-    $FBINK -b -c -m -t $FONT,size=150,top=10,bottom=0,left=0,right=0 "$TIME"
-    $FBINK -b -m -t $FONT,size=20,top=410,bottom=0,left=0,right=0 "$DATE"
-    $FBINK -b    -t $FONT,size=10,top=0,bottom=0,left=900,right=0 "Bat: $BAT"
-    $FBINK -b -m -t $FONT,size=20,top=510,bottom=0,left=0,right=0 "$COND"
-    $FBINK -b -m -t $FONT,size=30,top=600,bottom=0,left=0,right=0 "$TEMP | $INSIDE_TEMP_C°C"
-    if [ "$NOWIFI" = "1" ]; then
-        $FBINK -b -t $FONT,size=10,top=0,bottom=0,left=50,right=0 "No Wifi!"
-    fi
-    ### update framebuffer
-    $FBINK -w -s
-
-    echo "`date '+%Y-%m-%d_%H:%M:%S'`: Battery: $BAT" >> $LOG
+    
+    update_display
 
     ### Set Wakeuptimer
 	#echo 0 > /sys/class/rtc/rtc1/wakealarm
