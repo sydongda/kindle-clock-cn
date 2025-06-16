@@ -31,6 +31,7 @@ The scipts logs to `/mnt/us/clock.log`.
 * jailbreak the kindle (doh!)
 * Install KUAL
 * Install MRInstaller (this should be insalled anyway, additionally this includes fbink)
+* Python （为了输出中文）
 
 ## Installation:
 * create directory `/mnt/us/extensions/clock`
