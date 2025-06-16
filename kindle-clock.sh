@@ -50,7 +50,7 @@ update_weather() {
     fi
     ### 英文的温度更准确，中文的温度感觉会滞后。
     URL="https://wttr.in/${CITY}?format=%t"
-    TEMP=$(fetch_weather "$URL")
+    TEMP=$(fetch_weather "$URL" | sed 's/+//g')
     if [ $? -ne 0 ]; then
         echo "Temperature fetch failed." >> $LOG
     fi
