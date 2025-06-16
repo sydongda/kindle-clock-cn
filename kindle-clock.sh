@@ -23,17 +23,36 @@ wait_for_wifi() {
 
 
 ### Updates weather info
+fetch_weather() {
+    local url=$1
+    local TRIES=0
+    local MAX_RETRIES=3
+    local WEATHER=""
+
+    while [ $TRIES -lt $MAX_RETRIES ]; do
+        WEATHER=$(curl -s -f -m 5 "$url" 2>> $LOG)
+        if [ ! -z "$WEATHER" ]; then
+            echo "$WEATHER"
+            return 0
+        fi
+        TRIES=$((TRIES + 1))
+        sleep 1  # 等待 1 秒后重试
+    done
+
+    echo "Failed to fetch weather after $MAX_RETRIES attempts." >> $LOG
+    return 1
+}
 update_weather() {
-    WEATHER=$(curl -s -f -m 5 'https://zh.wttr.in/'$CITY'?format=%C' 2>> $LOG)
-    RC=$?
-    if [ ! -z "$WEATHER" ]; then
-        COND=${WEATHER}
+    URL="https://zh.wttr.in/${CITY}?format=%C"
+    COND=$(fetch_weather "$URL")
+    if [ $? -ne 0 ]; then
+        echo "Weather fetch failed." >> $LOG
     fi
     ### 英文的温度更准确，中文的温度感觉会滞后。
-    WEATHER=$(curl -s -f -m 5 'https://wttr.in/'$CITY'?format=+%t' 2>> $LOG)
-    RC=$?
-    if [ ! -z "$WEATHER" ]; then
-        TEMP=$(echo ${WEATHER} | sed s/+//)
+    URL="https://wttr.in/${CITY}?format=%t"
+    TEMP=$(fetch_weather "$URL")
+    if [ $? -ne 0 ]; then
+        echo "Temperature fetch failed." >> $LOG
     fi
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Processed weather data. ($TEMP // $COND)" >> $LOG
 }
@@ -87,7 +106,7 @@ update_display() {
     # Adjust coordinates according to display resolution. This is for PW2.
     $FBINK -b -c -m -t $FONT,size=150,top=10,bottom=0,left=0,right=0 "$TIME"
     $FBINK -b -m -t $CNFONT,size=30,top=410,bottom=0,left=0,right=0 "$DATE"
-    $FBINK -b    -t $FONT,size=10,top=0,bottom=0,left=850,right=0 "BATTERY: $BAT"
+    $FBINK -b    -t $FONT,size=10,top=0,bottom=0,left=840,right=0 "BATTERY: $BAT"
     $FBINK -b -m -t $CNFONT,size=20,top=510,bottom=0,left=0,right=0 "$COND"
     $FBINK -b -m -t $FONT,size=30,top=600,bottom=0,left=0,right=0 "$TEMP"
     if [ "$NOWIFI" = "1" ]; then
