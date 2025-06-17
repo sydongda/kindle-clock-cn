@@ -171,9 +171,7 @@ while true; do
             ### Finally, set time
             echo "`date '+%Y-%m-%d_%H:%M:%S'`: Setting time..." >> $LOG
             ### 仅在零点更新
-            if [ "$HOUR" = "00" ]; then
-                update_time
-            fi
+            update_time
             update_weather
         fi
 
