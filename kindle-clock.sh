@@ -1,7 +1,8 @@
 #!/bin/sh
 
 PWD=$(pwd)
-LOG="/dev/null"
+# LOG="/dev/null"
+LOG="/mnt/us/clock.log"
 FBINK="/mnt/us/extensions/MRInstaller/bin/PW2/fbink -q"
 FONT="regular=/usr/java/lib/fonts/Palatino-Regular.ttf"
 CNFONT="regular=/usr/java/lib/fonts/STSongMedium.ttf"
@@ -14,13 +15,18 @@ NTP_HOST="ntp1.aliyun.com"
 FBROTATE="echo -n 0 > /sys/devices/platform/imx_epdc_fb/graphics/fb0/rotate"
 
 update_time() {
+    echo "`date '+%Y-%m-%d_%H:%M:%S'`: Setting time..." >> $LOG
     ntpdate -s "${NTP_HOST}"
 }
 
 wait_for_wifi() {
-  return `lipc-get-prop com.lab126.wifid cmState | grep -e "CONNECTED" | wc -l`
+  lipc-get-prop com.lab126.wifid cmState | grep -e "CONNECTED" | wc -l
 }
 
+disable_wifi() {
+    ### Disable WIFI
+    lipc-set-prop com.lab126.cmd wirelessEnable 0
+}
 
 ### Updates weather info
 fetch_weather() {
@@ -39,7 +45,7 @@ fetch_weather() {
         sleep 1  # 等待 1 秒后重试
     done
 
-    echo "Failed to fetch weather after $MAX_RETRIES attempts." >> $LOG
+    echo "Failed to fetch weather ($url) after $MAX_RETRIES attempts." >> $LOG
     return 1
 }
 update_weather() {
@@ -94,7 +100,7 @@ lipc-set-prop com.lab126.powerd preventScreenSaver 1
 ### set time/weather as we start up
 update_time
 update_weather
-
+disable_wifi
 ### 星期显示中文
 DATE=$(/mnt/us/python3/bin/python3.9 cnday.py)
 clear_screen
@@ -141,7 +147,7 @@ while true; do
         NOWIFI=0
         ### Wait for wifi to come up
         while true; do
-            if wait_for_wifi; then
+            if [ $(wait_for_wifi) -gt 0 ]; then
                 break
             fi
             if [ ${TRYCNT} -gt 30 ]; then
@@ -169,18 +175,14 @@ while true; do
 
         if [ `lipc-get-prop com.lab126.wifid cmState` = "CONNECTED" ]; then
             ### Finally, set time
-            echo "`date '+%Y-%m-%d_%H:%M:%S'`: Setting time..." >> $LOG
-            ### 仅在零点更新
             update_time
             update_weather
+            disable_wifi
         fi
 
         clear_screen
     fi
 
-    ### Disable WIFI
-    lipc-set-prop com.lab126.cmd wirelessEnable 0
-    
     update_display
 
     ### Set Wakeuptimer
@@ -195,9 +197,10 @@ while true; do
     if [ $SLEEP_SECS -lt 5 ]; then
         let SLEEP_SECS=$SLEEP_SECS+60
     fi
-    rtcwake -d /dev/rtc1 -m no -s $SLEEP_SECS
+    rtcwake -d /dev/rtc1 -m mem -s $SLEEP_SECS
+    hwclock --systohc >> $LOG 2>&1 # Set hardware clock from system time
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Going to sleep for $SLEEP_SECS" >> $LOG
 	### Go into Suspend to Memory (STR)
-	echo "mem" > /sys/power/state
+	# echo "mem" > /sys/power/state
 #    exit
 done
