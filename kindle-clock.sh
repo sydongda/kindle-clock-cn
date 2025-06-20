@@ -1,7 +1,7 @@
 #!/bin/sh
 
 PWD=$(pwd)
-# LOG="/dev/null"
+LOGNULL="/dev/null"
 LOG="/mnt/us/clock.log"
 FBINK="/mnt/us/extensions/MRInstaller/bin/PW2/fbink -q"
 FONT="regular=/usr/java/lib/fonts/Palatino-Regular.ttf"
@@ -36,7 +36,7 @@ fetch_weather() {
     local WEATHER=""
 
     while [ $TRIES -lt $MAX_RETRIES ]; do
-        WEATHER=$(curl -s -f -m 5 "$url" 2>> $LOG)
+        WEATHER=$(curl -s -f -m 5 "$url" 2>> $LOGNULL)
         if [ ! -z "$WEATHER" ]; then
             echo "$WEATHER"
             return 0
@@ -48,7 +48,7 @@ fetch_weather() {
     echo "Failed to fetch weather ($url) after $MAX_RETRIES attempts." >> $LOG
     return 1
 }
-update_weather() {
+update_weather_wttr() {
     URL="https://zh.wttr.in/${CITY}?format=%C"
     COND=$(fetch_weather "$URL")
     if [ $? -ne 0 ]; then
@@ -63,6 +63,23 @@ update_weather() {
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Processed weather data. ($TEMP // $COND)" >> $LOG
 }
 
+update_weather_open_meteo() {
+    URL="https://api.open-meteo.com/v1/forecast?latitude=31.2222&longitude=121.4581&hourly=temperature_2m&current=temperature_2m,weather_code&timezone=auto&forecast_days=1"
+    WEATHER=$(curl "$URL" 2>> $LOG)
+    if [ $? -ne 0 ]; then
+        echo "Weather fetch failed." >> $LOG
+    fi
+    TEMP_V=$(echo "$WEATHER" | jq -r '.current.temperature_2m')
+    TEMP_U=$(echo "$WEATHER" | jq -r '.hourly_units.temperature_2m')
+    TEMP=$(echo "${TEMP_V}${TEMP_U}")
+    COND_CODE=$(echo "$WEATHER" | jq -r '.current.weather_code')
+    COND=$(python3 weather_map.py "$COND_CODE")
+    echo "`date '+%Y-%m-%d_%H:%M:%S'`: Processed weather data. ($TEMP // $COND)" >> $LOG
+}
+
+update_weather() {
+    update_weather_open_meteo
+}
 clear_screen(){
     $FBINK -f -c
     $FBINK -f -c
