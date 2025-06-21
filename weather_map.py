@@ -30,12 +30,11 @@ WEATHER_MAP = {
     96: {"name": "雷阵雨+小冰雹", "icon": "⛈️🧊", "description": "冰雹直径 < 5mm"},
     99: {"name": "雷阵雨+大冰雹", "icon": "⛈️🧊🧊", "description": "冰雹直径 ≥ 5mm"}
 }
+
 def get_weather_info(code):
     """获取特定天气代码的详细信息"""
     code = int(code)
-    weather = WEATHER_MAP.get(code)
-    if weather:
-        return f"{weather['name']}"
-    return f"未知天气代码:{code}"
+    weather = WEATHER_MAP.get(code, {"name": f"未知天气代码:{code}"})
+    return f"{weather['name']}"
 
 print(get_weather_info(sys.argv[1]))
