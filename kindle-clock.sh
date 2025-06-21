@@ -2,7 +2,8 @@
 
 PWD=$(pwd)
 LOGNULL="/dev/null"
-LOG="/mnt/us/clock.log"
+# LOG="/mnt/us/clock.log"
+LOG=${LOGNULL}
 FBINK="/mnt/us/extensions/MRInstaller/bin/PW2/fbink -q"
 FONT="regular=/usr/java/lib/fonts/Palatino-Regular.ttf"
 CNFONT="regular=/usr/java/lib/fonts/STSongMedium.ttf"
@@ -13,6 +14,7 @@ NTP_HOST="ntp1.aliyun.com"
 
 #PW2
 FBROTATE="echo -n 0 > /sys/devices/platform/imx_epdc_fb/graphics/fb0/rotate"
+TURNOFF_BACKLIGHT="echo 0 > /sys/class/backlight/max77696-bl/brightness"
 
 update_time() {
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Setting time..." >> $LOG
@@ -79,6 +81,7 @@ update_weather_open_meteo() {
 
 update_weather() {
     update_weather_open_meteo
+    # update_weather_wttr
 }
 clear_screen(){
     $FBINK -f -c
@@ -144,7 +147,7 @@ update_display() {
 while true; do
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Top of loop (awake!)." >> $LOG
     ### Backlight off
-    ### 没找到，手动设置亮度为最低。
+    eval ${TURNOFF_BACKLIGHT}
 
     ### Get weather data and set time via ntpdate every hour
     MINUTE=`date "+%M"`
@@ -201,6 +204,8 @@ while true; do
     fi
 
     update_display
+    
+    hwclock --systohc >> $LOG 2>&1 # Set hardware clock from system time
 
     ### Set Wakeuptimer
 	#echo 0 > /sys/class/rtc/rtc1/wakealarm
@@ -214,9 +219,8 @@ while true; do
     if [ $SLEEP_SECS -lt 5 ]; then
         let SLEEP_SECS=$SLEEP_SECS+60
     fi
-    rtcwake -d /dev/rtc1 -m mem -s $SLEEP_SECS
-    hwclock --systohc >> $LOG 2>&1 # Set hardware clock from system time
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Going to sleep for $SLEEP_SECS" >> $LOG
+    rtcwake -d /dev/rtc1 -m mem -s $SLEEP_SECS
 	### Go into Suspend to Memory (STR)
 	# echo "mem" > /sys/power/state
 #    exit
