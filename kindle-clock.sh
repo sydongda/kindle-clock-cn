@@ -2,8 +2,8 @@
 
 PWD=$(pwd)
 LOGNULL="/dev/null"
-# LOG="/mnt/us/clock.log"
-LOG=${LOGNULL}
+LOG="/mnt/us/clock.log"
+# LOG=${LOGNULL}
 FBINK="/mnt/us/extensions/MRInstaller/bin/PW2/fbink -q"
 FONT="regular=/usr/java/lib/fonts/Palatino-Regular.ttf"
 CNFONT="regular=/usr/java/lib/fonts/STSongMedium.ttf"
@@ -197,7 +197,6 @@ while true; do
             ### Finally, set time
             update_time
             update_weather
-            disable_wifi
         fi
 
         clear_screen
@@ -205,6 +204,7 @@ while true; do
 
     update_display
     
+    disable_wifi
     hwclock --systohc >> $LOG 2>&1 # Set hardware clock from system time
 
     ### Set Wakeuptimer
