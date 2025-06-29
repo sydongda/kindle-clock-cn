@@ -122,7 +122,7 @@ update_time
 update_weather
 disable_wifi
 ### 星期显示中文
-DATE=$(/mnt/us/python3/bin/python3.9 cnday.py)
+DATE=$(python3 cnday.py)
 clear_screen
 
 update_display() {
@@ -153,7 +153,7 @@ while true; do
     MINUTE=`date "+%M"`
     HOUR=`date "+%H"`
     if [ "$HOUR" = "00" ] && [ "$MINUTE" = "00" ]; then
-        DATE=$(/mnt/us/python3/bin/python3.9 cnday.py)
+        DATE=$(python3 cnday.py)
     fi
 
     if [ "$MINUTE" = "00" ]; then
