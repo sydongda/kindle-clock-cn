@@ -44,7 +44,7 @@ fetch_weather() {
             return 0
         fi
         TRIES=$((TRIES + 1))
-        sleep 1  # 等待 1 秒后重试
+        sleep 1 
     done
 
     echo "Failed to fetch weather ($url) after $MAX_RETRIES attempts." >> $LOG
@@ -56,7 +56,7 @@ update_weather_wttr() {
     if [ $? -ne 0 ]; then
         echo "Weather fetch failed." >> $LOG
     fi
-    ### 英文的温度更准确，中文的温度感觉会滞后。
+    ### 
     URL="https://wttr.in/${CITY}?format=%t"
     TEMP=$(fetch_weather "$URL" | sed 's/+//g')
     if [ $? -ne 0 ]; then
@@ -92,9 +92,9 @@ clear_screen(){
 echo "`date '+%Y-%m-%d_%H:%M:%S'`: ------------- Startup ------------" >> $LOG
 
 ### No way of running this if wifi is down.
-if [ `lipc-get-prop com.lab126.wifid cmState` != "CONNECTED" ]; then
-	exit 1
-fi
+# if [ `lipc-get-prop com.lab126.wifid cmState` != "CONNECTED" ]; then
+# 	exit 1
+# fi
 
 $FBINK -w -c -f -m -t $FONT,size=20,top=410,bottom=0,left=0,right=0 "Starting Clock..." > /dev/null 2>&1
 
@@ -121,34 +121,35 @@ lipc-set-prop com.lab126.powerd preventScreenSaver 1
 update_time
 update_weather
 disable_wifi
-### 星期显示中文
 DATE=$(python3 cnday.py)
 clear_screen
 
 update_display() {
-    BAT=$(gasgauge-info -s)
+    # BAT=$(gasgauge-info -s)
+    BAT=$(lipc-get-prop com.lab126.powerd battLevel)
     TIME=$(date '+%H:%M')
 
     # Adjust coordinates according to display resolution. This is for PW2.
     $FBINK -b -c -m -t $FONT,size=150,top=10,bottom=0,left=0,right=0 "$TIME"
     $FBINK -b -m -t $CNFONT,size=30,top=410,bottom=0,left=0,right=0 "$DATE"
     $FBINK -b    -t $FONT,size=10,top=0,bottom=0,left=840,right=0 "BATTERY: $BAT"
-    $FBINK -b -m -t $CNFONT,size=20,top=510,bottom=0,left=0,right=0 "$COND"
-    $FBINK -b -m -t $FONT,size=30,top=600,bottom=0,left=0,right=0 "$TEMP"
+    $FBINK -b -m -t $CNFONT,size=20,top=510,bottom=0,left=0,right=0 "$COND / $TEMP"
+    $FBINK -b -m -t $CNFONT,size=20,top=600,bottom=0,left=0,right=0 "${higth_exam_days}"
     if [ "$NOWIFI" = "1" ]; then
-        $FBINK -b -t $FONT,size=10,top=0,bottom=0,left=50,right=0 "No Wifi!"
+        $FBINK -b -t $FONT,size=10,top=0,bottom=0,left=50,right=0 "No Wifi(${nowifi_cnt})!"
     fi
     # Update framebuffer
     $FBINK -w -s
 
     echo "$(date '+%Y-%m-%d_%H:%M:%S'): Battery: $BAT" >> $LOG
 }
-
+nowifi_cnt=0
+higth_exam_days=$(python3 countdown_to_zhongkao.py)
 while true; do
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Top of loop (awake!)." >> $LOG
     ### Backlight off
     eval ${TURNOFF_BACKLIGHT}
-
+    MAX_RETRIES=30
     ### Get weather data and set time via ntpdate every hour
     MINUTE=`date "+%M"`
     HOUR=`date "+%H"`
@@ -157,9 +158,11 @@ while true; do
     fi
 
     if [ "$MINUTE" = "00" ]; then
-        #为了避免整点的时候，延迟太多，在打开wifi之前，先更新时间信息
+        higth_exam_days=$(python3 countdown_to_zhongkao.py)
         update_display
 
+        lipc-set-prop com.lab126.powerd refreshBattery
+        
         echo "`date '+%Y-%m-%d_%H:%M:%S'`: Enabling Wifi" >> $LOG
         ### Enable WIFI, disable wifi first in order to have a defined state
     	lipc-set-prop com.lab126.cmd wirelessEnable 1
@@ -167,27 +170,21 @@ while true; do
         NOWIFI=0
         ### Wait for wifi to come up
         while true; do
+            /usr/bin/wpa_cli scan
+            sleep 2
+            /usr/bin/wpa_cli -i wlan0 reconnect
+            sleep 5
             if [ $(wait_for_wifi) -gt 0 ]; then
+                nowifi_cnt=0
                 break
             fi
-            if [ ${TRYCNT} -gt 30 ]; then
+            if [ ${TRYCNT} -gt $((MAX_RETRIES + 10 * nowifi_cnt)) ]; then
                 ### waited long enough
                 echo "`date '+%Y-%m-%d_%H:%M:%S'`: No Wifi... ($TRYCNT)" >> $LOG
                 NOWIFI=1
+                nowifi_cnt=$((nowifi_cnt + 1))
                 break
             fi
-            WIFISTATE=$(lipc-get-prop com.lab126.wifid cmState)
-            echo "`date '+%Y-%m-%d_%H:%M:%S'`: Waiting for Wifi... (try $TRYCNT: $WIFISTATE)" >> $LOG
-            ### Are we stuck in READY state?
-            if [ "$WIFISTATE" = "READY" ]; then
-                ### we have to reconnect
-                echo "`date '+%Y-%m-%d_%H:%M:%S'`: Reconnecting to Wifi..." >> $LOG
-                /usr/bin/wpa_cli -i wlan0 reconnect
-
-                ### Could also be that kindle forgot the wpa ssid/psk combo
-                #if [ wpa_cli status | grep INACTIVE | wc -l ]; then...
-            fi
-            sleep 1
             TRYCNT=$((TRYCNT + 1))
         done
         echo "`date '+%Y-%m-%d_%H:%M:%S'`: wifi: `lipc-get-prop com.lab126.wifid cmState`" >> $LOG
@@ -207,9 +204,6 @@ while true; do
     disable_wifi
     hwclock --systohc >> $LOG 2>&1 # Set hardware clock from system time
 
-    ### Set Wakeuptimer
-	#echo 0 > /sys/class/rtc/rtc1/wakealarm
-	#echo ${WAKEUP_TIME} > /sys/class/rtc/rtc1/wakealarm
     NOW=$(date +%s)
     let WAKEUP_TIME="((($NOW + 59)/60)*60)" # Hack to get next minute
     let SLEEP_SECS=$WAKEUP_TIME-$NOW
@@ -221,7 +215,4 @@ while true; do
     fi
     echo "`date '+%Y-%m-%d_%H:%M:%S'`: Going to sleep for $SLEEP_SECS" >> $LOG
     rtcwake -d /dev/rtc1 -m mem -s $SLEEP_SECS
-	### Go into Suspend to Memory (STR)
-	# echo "mem" > /sys/power/state
-#    exit
 done

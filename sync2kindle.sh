@@ -1,2 +1,2 @@
 #!/bin/sh
-rsync -zrvh --update * root@kindle:/mnt/us/extensions/clock
+rsync -zrvh --update -e "ssh -i ~/.ssh/kindleKey" * root@192.168.1.5:/mnt/us/extensions/clock
